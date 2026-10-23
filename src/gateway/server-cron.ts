@@ -96,6 +96,33 @@ export function buildGatewayCronService(params: {
         }).catch((err) => {
           cronLogger.warn({ err: String(err), logPath }, "cron: run log append failed");
         });
+
+        // Bridge: POST run summary to agent/runs (API group 1619) so the
+        // dashboard frontend can display cron outputs via useWorkerRuns().
+        const hubUrl = process.env.XANO_CLAUDE_HUB_URL || "https://xnwv-v1z6-dvnr.n7c.xano.io/api:OehldiTW";
+        const agentName = evt.jobId
+          .split("-")
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+        void fetch(`${hubUrl}/agent/runs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agent_id: evt.jobId,
+            agent_name: agentName,
+            status: evt.status === "ok" ? "completed" : evt.status === "error" ? "failed" : evt.status ?? "completed",
+            response: evt.summary ?? "",
+            tools_used: [],
+            actions: [],
+            tool_call_count: 0,
+            trigger: "cron",
+            duration_ms: evt.durationMs ?? 0,
+            error_message: evt.error ?? null,
+            message: `Cron run ${evt.jobId}`,
+          }),
+        }).catch((err) => {
+          cronLogger.warn({ err: String(err) }, "cron: agent/runs bridge POST failed");
+        });
       }
     },
   });
